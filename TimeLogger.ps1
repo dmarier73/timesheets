@@ -506,6 +506,10 @@ if (Test-Path "$BasePath\.git") {
     Copy-Item $PSCommandPath "$BasePath\TimeLogger.ps1" -Force
     $out = & $Git @G add . 2>&1
     $out += & $Git @G commit -m "Auto-sync timesheet" --quiet 2>&1
+    # Pick up edits made on GitHub (e.g. README) first, or every push gets rejected as non-fast-forward
+    $out += & $Git @G pull --rebase --quiet origin main 2>&1
+    # On a conflict, don't leave the repo stuck mid-rebase; the push below then fails and gets logged
+    if ($LASTEXITCODE -ne 0) { $out += & $Git @G rebase --abort 2>&1 }
     $out += & $Git @G push origin main --quiet 2>&1
     if ($LASTEXITCODE -ne 0) {
         # Native commands don't throw, so check the exit code and log the real output
