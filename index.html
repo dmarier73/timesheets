@@ -57,7 +57,7 @@ td.r, th.r { text-align: right; }
 <body>
 <div class="wrap">
   <header>
-    <h1>Time Dashboard <small>updated 2026-11-12 07:44</small></h1>
+    <h1>Time Dashboard <small>updated 2026-11-12 16:30</small></h1>
     <a class="link" href="./weeks.html">Weekly timesheets &rarr;</a>
   </header>
 
@@ -87,7 +87,7 @@ td.r, th.r { text-align: right; }
 </div>
 
 <script>
-const SESSIONS = [{"s":"2026-11-06T07:30:00","e":"2026-11-06T15:30:00"},{"s":"2026-11-09T07:30:51","e":"2026-11-09T14:10:39"},{"s":"2026-11-09T14:10:51","e":"2026-11-09T14:26:32"},{"s":"2026-11-09T14:28:46","e":"2026-11-09T14:35:59"},{"s":"2026-11-09T14:37:12","e":"2026-11-09T16:04:33"},{"s":"2026-11-10T07:31:51","e":"2026-11-10T11:47:07"},{"s":"2026-11-10T12:10:30","e":"2026-11-10T16:02:34"},{"s":"2026-11-10T18:40:57","e":"2026-11-10T18:45:37"},{"s":"2026-11-11T07:17:26","e":"2026-11-11T16:40:31"},{"s":"2026-11-12T07:44:46","e":null}];
+const SESSIONS = [{"s":"2026-11-06T07:30:00","e":"2026-11-06T15:30:00"},{"s":"2026-11-09T07:30:51","e":"2026-11-09T14:10:39"},{"s":"2026-11-09T14:10:51","e":"2026-11-09T14:26:32"},{"s":"2026-11-09T14:28:46","e":"2026-11-09T14:35:59"},{"s":"2026-11-09T14:37:12","e":"2026-11-09T16:04:33"},{"s":"2026-11-10T07:31:51","e":"2026-11-10T11:47:07"},{"s":"2026-11-10T12:10:30","e":"2026-11-10T16:02:34"},{"s":"2026-11-10T18:40:57","e":"2026-11-10T18:45:37"},{"s":"2026-11-11T07:17:26","e":"2026-11-11T16:40:31"},{"s":"2026-11-12T07:44:46","e":"2026-11-12T16:30:37"}];
 const DAY = 864e5, WD = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const $ = id => document.getElementById(id);
 const store = { get(k, d) { try { const v = localStorage.getItem('td.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
@@ -150,6 +150,8 @@ function init() {
   const p = state.preset && PRESETS.find(x => x[0] === state.preset) ? state.preset : null;
   if (p) applyPreset(p); else { const [f, t] = PRESETS[2][1](); $('from').value = store.get('from', key(f)); $('to').value = store.get('to', key(t)); readRange(); render(); }
   setInterval(() => { if (SESSIONS.some(s => !s.e)) render(true); }, 30000);
+  // The embedded SESSIONS go stale in a tab left open (an open session would keep counting past its END), so re-fetch the page
+  setInterval(() => location.reload(), 5 * 60e3);
 }
 function applyPreset(p) {
   const [f, t] = PRESETS.find(x => x[0] === p)[1]();
@@ -167,9 +169,11 @@ function render(liveOnly) {
   const { m, first, last, open } = perDay(), T = state.week / 5, now = today();
   // Expected only counts days up to today (future days in the range don't count against you)
   const end = state.to < now ? state.to : now;
+  // Today isn't over yet: it can add overtime but not count as a short day
+  const expOf = (d, w) => !isWork(d) ? 0 : d < now ? T : Math.min(T, w);
   const days = [];
   for (let d = state.from; d <= end; d = addDays(d, 1)) {
-    const k = key(d), w = m[k] || 0, exp = isWork(d) ? T : 0;
+    const k = key(d), w = m[k] || 0, exp = expOf(d, w);
     days.push({ k, d, w, exp, delta: w - exp, first: first[k], last: last[k], open: !!open[k] });
   }
   const worked = days.reduce((a, x) => a + x.w, 0), expected = days.reduce((a, x) => a + x.exp, 0), bal = worked - expected;
@@ -178,7 +182,7 @@ function render(liveOnly) {
   const todayK = key(now), todayW = m[todayK] || 0, isOpen = !!open[todayK];
 
   // All-time balance, independent of range
-  let allBal = 0; for (let d = firstData; d <= now; d = addDays(d, 1)) allBal += (m[key(d)] || 0) - (isWork(d) ? T : 0);
+  let allBal = 0; for (let d = firstData; d <= now; d = addDays(d, 1)) { const w = m[key(d)] || 0; allBal += w - expOf(d, w); }
 
   const remain = Math.max(0, (isWork(now) ? T : 0) - todayW);
   const leaveAt = isOpen && remain > 0 ? new Date(Date.now() + remain * 36e5) : null;

@@ -378,6 +378,8 @@ function init() {
   const p = state.preset && PRESETS.find(x => x[0] === state.preset) ? state.preset : null;
   if (p) applyPreset(p); else { const [f, t] = PRESETS[2][1](); $('from').value = store.get('from', key(f)); $('to').value = store.get('to', key(t)); readRange(); render(); }
   setInterval(() => { if (SESSIONS.some(s => !s.e)) render(true); }, 30000);
+  // The embedded SESSIONS go stale in a tab left open (an open session would keep counting past its END), so re-fetch the page
+  setInterval(() => location.reload(), 5 * 60e3);
 }
 function applyPreset(p) {
   const [f, t] = PRESETS.find(x => x[0] === p)[1]();
@@ -395,9 +397,11 @@ function render(liveOnly) {
   const { m, first, last, open } = perDay(), T = state.week / 5, now = today();
   // Expected only counts days up to today (future days in the range don't count against you)
   const end = state.to < now ? state.to : now;
+  // Today isn't over yet: it can add overtime but not count as a short day
+  const expOf = (d, w) => !isWork(d) ? 0 : d < now ? T : Math.min(T, w);
   const days = [];
   for (let d = state.from; d <= end; d = addDays(d, 1)) {
-    const k = key(d), w = m[k] || 0, exp = isWork(d) ? T : 0;
+    const k = key(d), w = m[k] || 0, exp = expOf(d, w);
     days.push({ k, d, w, exp, delta: w - exp, first: first[k], last: last[k], open: !!open[k] });
   }
   const worked = days.reduce((a, x) => a + x.w, 0), expected = days.reduce((a, x) => a + x.exp, 0), bal = worked - expected;
@@ -406,7 +410,7 @@ function render(liveOnly) {
   const todayK = key(now), todayW = m[todayK] || 0, isOpen = !!open[todayK];
 
   // All-time balance, independent of range
-  let allBal = 0; for (let d = firstData; d <= now; d = addDays(d, 1)) allBal += (m[key(d)] || 0) - (isWork(d) ? T : 0);
+  let allBal = 0; for (let d = firstData; d <= now; d = addDays(d, 1)) { const w = m[key(d)] || 0; allBal += w - expOf(d, w); }
 
   const remain = Math.max(0, (isWork(now) ? T : 0) - todayW);
   const leaveAt = isOpen && remain > 0 ? new Date(Date.now() + remain * 36e5) : null;
